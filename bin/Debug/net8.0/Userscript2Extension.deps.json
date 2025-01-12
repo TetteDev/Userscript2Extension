@@ -1,0 +1,23 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v8.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v8.0": {
+      "Userscript2Extension/1.0.0": {
+        "runtime": {
+          "Userscript2Extension.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "Userscript2Extension/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

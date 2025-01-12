@@ -1,0 +1,14 @@
+C:\Users\Root\source\repos\Userscript2Extension\Userscript2Extension\bin\Debug\net8.0\Userscript2Extension.exe
+C:\Users\Root\source\repos\Userscript2Extension\Userscript2Extension\bin\Debug\net8.0\Userscript2Extension.deps.json
+C:\Users\Root\source\repos\Userscript2Extension\Userscript2Extension\bin\Debug\net8.0\Userscript2Extension.runtimeconfig.json
+C:\Users\Root\source\repos\Userscript2Extension\Userscript2Extension\bin\Debug\net8.0\Userscript2Extension.dll
+C:\Users\Root\source\repos\Userscript2Extension\Userscript2Extension\bin\Debug\net8.0\Userscript2Extension.pdb
+C:\Users\Root\source\repos\Userscript2Extension\Userscript2Extension\obj\Debug\net8.0\Userscript2Extension.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\Root\source\repos\Userscript2Extension\Userscript2Extension\obj\Debug\net8.0\Userscript2Extension.AssemblyInfoInputs.cache
+C:\Users\Root\source\repos\Userscript2Extension\Userscript2Extension\obj\Debug\net8.0\Userscript2Extension.AssemblyInfo.cs
+C:\Users\Root\source\repos\Userscript2Extension\Userscript2Extension\obj\Debug\net8.0\Userscript2Extension.csproj.CoreCompileInputs.cache
+C:\Users\Root\source\repos\Userscript2Extension\Userscript2Extension\obj\Debug\net8.0\Userscript2Extension.dll
+C:\Users\Root\source\repos\Userscript2Extension\Userscript2Extension\obj\Debug\net8.0\refint\Userscript2Extension.dll
+C:\Users\Root\source\repos\Userscript2Extension\Userscript2Extension\obj\Debug\net8.0\Userscript2Extension.pdb
+C:\Users\Root\source\repos\Userscript2Extension\Userscript2Extension\obj\Debug\net8.0\Userscript2Extension.genruntimeconfig.cache
+C:\Users\Root\source\repos\Userscript2Extension\Userscript2Extension\obj\Debug\net8.0\ref\Userscript2Extension.dll
