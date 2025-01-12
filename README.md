@@ -18,7 +18,7 @@
  * unsafeWindow (barely, just returns the first available 'window' instance to the script)
 
 # Stuff that arent working/supported
- * Basically everything else thats not mentioned above (which is still a lot)
+ * Basically everything else thats not mentioned above (which is still a lot, and even for the functions mentioned above, none of the async versions are implemented)
 
 # Stuff that needs to be done (in no particular order)
  * Reimplement GM_xmlhttpRequest
@@ -26,6 +26,7 @@
  * A somewhat functional version of GM_info could be nice, where you can atleast get some script information, now it just returns an empty object
  * unsafeWindow needs to be fixed also
  * Make chrome extension inherit whatever icon is specified in the tampermonkey script header
+ * Implement auto packing of outputted extension by calling chrome.exe with the --pack-extension commandline flag
 
 # How to use
  Open the project, pass an absolute path to the Converter class and then call Convert on it.
