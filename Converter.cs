@@ -20,8 +20,10 @@ namespace Userscript2Extension
         }
 
         internal Header ParseHeader() {
-            const string HeaderStart = "// ==UserScript==";
-            const string HeaderEnd = "// ==/UserScript==";
+            //const string HeaderStart = "// ==UserScript==";
+            //const string HeaderEnd = "// ==/UserScript==";
+            const string HeaderStart = "==UserScript==";
+            const string HeaderEnd = "==/UserScript==";
 
             int SliceStart = Array.FindIndex(_UserscriptContentLines, line => line.Contains(HeaderStart, StringComparison.InvariantCultureIgnoreCase));
             int SliceEnd = Array.FindIndex(_UserscriptContentLines, line => line.Contains(HeaderEnd, StringComparison.InvariantCultureIgnoreCase));
@@ -172,14 +174,15 @@ namespace Userscript2Extension
                         {
                             Console.WriteLine($"[X] Failed fetching require content from url '{Require}', manual intervention needed!");
                             Console.ReadKey();
-                            throw new InvalidOperationException($"[X] Failed fetching require content from url '{Require}', manual intervention needed!");
+                            throw; // Rethrow exception to halt the conversion progress
                         }
                     }
                     Buffer += $"{ScriptContent}\n";
                 }
             }
 
-            const string HeaderEnd = "// ==/UserScript==";
+            //const string HeaderEnd = "// ==/UserScript==";
+            const string HeaderEnd = "==/UserScript==";
             int SliceStart = Array.FindIndex(_UserscriptContentLines, line => line.Contains(HeaderEnd, StringComparison.InvariantCultureIgnoreCase));
             Buffer += string.Join("\n", _UserscriptContentLines[(SliceStart + 1)..]);
 
@@ -330,6 +333,7 @@ namespace Userscript2Extension
         }
 
         public void Convert() {
+            Console.WriteLine($"[*] Attempting to generate a {(_IsChromeExtension ? "chrome" : "firefox")} extension ...");
             _UserscriptHeader = ParseHeader();
 
             bool Success = BuildManifest(out string ManifestText);
