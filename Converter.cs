@@ -183,28 +183,40 @@ namespace Userscript2Extension
             if (HasRunAt)
             {
                 string Value = _UserscriptHeader.Headers["run-at"].First();
-                Buffer += $"\t\t\"run_at\": \"{Value}\",\n";
+                Buffer += $"\t\t\"run_at\": \"{Value.Replace("-", "_")}\",\n";
                 Helpers.Log($"Handled header directive @runat", LogType.Success, true);
+            } else
+            {
+                Buffer += $"\t\t\"run_at\": \"document_start\",\n";
             }
+
             bool HasNoIframes = _UserscriptHeader.Headers.ContainsKey("noframes");
             if (HasNoIframes)
             {
-                string Value = _UserscriptHeader.Headers["noframes"].First();
                 Buffer += $"\t\t\"all_frames\": false,\n";
                 Helpers.Log($"Handled header directive @noframes", LogType.Success, true);
+            } else
+            {
+                Buffer += $"\t\t\"all_frames\": false,\n";
             }
 
-            /*
+            
             bool HasSandbox = _UserscriptHeader.Headers.ContainsKey("sandbox");
             if (HasSandbox)
             {
                 string Value = _UserscriptHeader.Headers["sandbox"].First();
-                string ManifestEquivalent = Value == "ISOLATED_WORLD" ? "ISOLATED" : "MAIN";
+                string ManifestEquivalent = Value switch
+                {
+                    "raw" or "JavaScript" => "MAIN",
+                    _ => "ISOLATED",
+                };
                 Buffer += $"\t\t\"world\": \"{ManifestEquivalent}\",\n";
                 Helpers.Log($"Handled header directive @sandbox", LogType.Success, true);
+            } else
+            {
+                Buffer += $"\t\t\"world\": \"MAIN\",\n";
             }
-            */
-
+            
             Buffer += $"\t\t\"js\": [\"{ContentScriptFileName}\"]\n\t}}],\n";
             Buffer += $"\t\"background\": {{ \"service_worker\": \"{ServiceWorkerFileName}\" }}";
 

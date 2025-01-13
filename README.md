@@ -8,6 +8,7 @@
  * @run-at
  * @noframes
  * @connect (not tested fully, came with re-implementation of GM_xmlhttpRequest)
+ * @sandbox
 
 # Supported GM_* functions
  * GM_log
