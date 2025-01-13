@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
+using System.IO;
+using System.IO.Compression;
 
 namespace Userscript2Extension
 {
@@ -8,7 +10,6 @@ namespace Userscript2Extension
         internal string _UserscriptBaseFolder;
         internal string _UserscriptContent;
         internal string[] _UserscriptContentLines;
-
         internal Header _UserscriptHeader;
         internal bool _IsChromeExtension;
 
@@ -196,8 +197,6 @@ namespace Userscript2Extension
             return true;
         }
 
-
-
         internal bool BuildBackgroundScript(out string BackgroundScriptContent)
         {
             string Buffer = "";
@@ -234,9 +233,11 @@ namespace Userscript2Extension
             return true;
         }
 
+
         internal readonly Dictionary<string, string> RewriteLookupTable = new()
         {
-            { "GM_log", "function GM_log(message) { console.log(message); }\n" },
+            { "GM_log", 
+                "function GM_log(message) { console.log(message); }\n" },
             { "GM_addElement", 
                 "function GM_addElement(...args) {\n" +
                 "   const ext = args.length === 3;\n" +
@@ -283,14 +284,17 @@ namespace Userscript2Extension
                 "Object.defineProperty(window, 'GM_info', { value: {}, writable: true });\n" },
             { "unsafeWindow",
                 "Object.defineProperty(window, 'unsafeWindow', { value: window, writable: true });\n" },
-            { "GM_setClipboard",
-                "function GM_setClipboard(data, info, cb) {\n" +
-                "   debugger;\n" +
-                "}\n" },
-            { "GM_xmlhttpRequest",
-                "function GM_xmlhttpRequest(details) {\n" +
-                "   debugger;\n" +
-                "}\n" },
+
+            //{ "GM_setClipboard",
+            //    "function GM_setClipboard(data, info, cb) {\n" +
+            //    "   debugger;\n" +
+            //    "}\n" },
+
+            //{ "GM_xmlhttpRequest",
+            //    "function GM_xmlhttpRequest(details) {\n" +
+            //    "   debugger;\n" +
+            //    "}\n" },
+
             //{ "GM_getTab",
             //    "function GM_getTab(callback) {\n" +
             //    "   let queryOptions = { active: true, lastFocusedWindow: true };\n" +
@@ -308,7 +312,6 @@ namespace Userscript2Extension
                 return $"function {GrantName}(args) {{ console.warn(`Implementation for '{GrantName}' has not been written`); }}\n";
             }
         }
-
         internal string HandleRunat(string Buffer, string RunatDirective)
         {
             Console.WriteLine($"[-] Ignored @run-at directive ({RunatDirective})");
@@ -333,7 +336,7 @@ namespace Userscript2Extension
         }
 
         public void Convert() {
-            Console.WriteLine($"[*] Attempting to generate a {(_IsChromeExtension ? "chrome" : "firefox")} extension ...");
+            Console.WriteLine($"[*] Attempting to generate a {(_IsChromeExtension ? "chrome" : "firefox")} extension, please wait ...");
             _UserscriptHeader = ParseHeader();
 
             bool Success = BuildManifest(out string ManifestText);
@@ -348,15 +351,43 @@ namespace Userscript2Extension
 
         internal void PackExtension(string ExtensionPath, out string PackedExtensionPath)
         {
+            Console.WriteLine($"[-] PackExtension ({(_IsChromeExtension ? "chrome" : "firefox")}) was called but no logic implemented, ignoring ...");
             if (_IsChromeExtension)
             {
-                Console.WriteLine("[-] PackExtension (chrome) was called but no logic implemented, ignoring ...");
+                bool Found = Helpers.TryResolveChromePath(out string ChromePath);
+                if (Found)
+                {
+                    string CommandLine = $@"--pack-extension=""{ExtensionPath}"" --pack-extension-key=""{Path.Combine(Path.GetDirectoryName(ExtensionPath), _UserscriptHeader.Headers["name"].First())}.pem""";
+                    // Call executable pointed to by path in ChromePath with CommandLine as the argument
+                    //PackedExtensionPath = Path.Combine(Path.GetDirectoryName(ExtensionPath), Path.Combine(Path.GetDirectoryName(ExtensionPath), _UserscriptHeader.Headers["name"].First()) + ".crx";
+                }
             }
             else
             {
-                Console.WriteLine("[-] PackExtension (firefox) was called but no logic implemented, ignoring ...");
+                ZipFile.CreateFromDirectory(ExtensionPath, Path.Combine(Path.GetDirectoryName(ExtensionPath), _UserscriptHeader.Headers["name"].First()) + ".zip");
+                //PackedExtensionPath = Path.Combine(Path.GetDirectoryName(ExtensionPath), _UserscriptHeader.Headers["name"].First()) + ".zip";
             }
+
             PackedExtensionPath = ExtensionPath;
+        }
+    }
+
+    internal static class Helpers
+    {
+        internal static bool TryResolveChromePath(out string ChromeExecutablePath)
+        {
+            var path = Microsoft.Win32.Registry.GetValue(@"HKEY_CLASSES_ROOT\ChromeHTML\shell\open\command", null, null) as string;
+            if (path != null)
+            {
+                var split = path.Split('\"');
+                path = split.Length >= 2 ? split[1] : null;
+
+                ChromeExecutablePath = path;
+                return true;
+            }
+
+            ChromeExecutablePath = "";
+            return false;
         }
     }
 
