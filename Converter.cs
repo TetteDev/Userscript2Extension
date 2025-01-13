@@ -10,8 +10,10 @@ namespace Userscript2Extension
         internal string[] _UserscriptContentLines;
 
         internal Header _UserscriptHeader;
+        internal bool _IsChromeExtension;
 
-        public Converter(string PathUserscript) {
+        public Converter(string PathUserscript, bool IsChromeExtension = true) {
+            _IsChromeExtension = IsChromeExtension;
             _UserscriptBaseFolder = Path.GetDirectoryName(PathUserscript);
             _UserscriptContent = File.ReadAllText(PathUserscript);
             _UserscriptContentLines = _UserscriptContent.Split("\r\n");
@@ -21,8 +23,8 @@ namespace Userscript2Extension
             const string HeaderStart = "// ==UserScript==";
             const string HeaderEnd = "// ==/UserScript==";
 
-            int SliceStart = Array.FindIndex(_UserscriptContentLines, line => line.Equals(HeaderStart, StringComparison.InvariantCultureIgnoreCase));
-            int SliceEnd = Array.FindIndex(_UserscriptContentLines, line => line.Equals(HeaderEnd, StringComparison.InvariantCultureIgnoreCase));
+            int SliceStart = Array.FindIndex(_UserscriptContentLines, line => line.Contains(HeaderStart, StringComparison.InvariantCultureIgnoreCase));
+            int SliceEnd = Array.FindIndex(_UserscriptContentLines, line => line.Contains(HeaderEnd, StringComparison.InvariantCultureIgnoreCase));
 
             var Slice = _UserscriptContentLines[(SliceStart+1)..SliceEnd].Select(line => line.TrimStart('/').Trim());
             Header ScriptHeader = new();
@@ -62,12 +64,12 @@ namespace Userscript2Extension
                         Buffer += $"\t\"{Key}\": \"{Value.First()}\",\n";
                         break;
                     default:
-                        Console.WriteLine($"Skipping key '{Key}'");
+                        Console.WriteLine($"[~] Skipping header key '{Key}'");
                         break;
                 }
             }
 
-            string[] GrantsNeedingPermission = ["GM_setClipboard", "GM_setValue", "GM_getValue", "GM_deleteValue"];
+            string[] GrantsNeedingPermission = ["GM_setClipboard", "GM_setValue", "GM_getValue", "GM_deleteValue"/*, "GM_getTab"*/];
             IEnumerable<string> SpecialGrants = _UserscriptHeader.Headers["grant"].Where(grant => GrantsNeedingPermission.Contains(grant));
             List<string> AddedPermissions = [];
             Buffer += $"\t\"permissions\": [";
@@ -86,12 +88,33 @@ namespace Userscript2Extension
                     case "GM_deleteValue":
                         PermissionNeeded = "storage";
                         break;
+                    //case "GM_getTab":
+                    //    PermissionNeeded = "activeTab,tabs";
+                    //    break;
                 }
 
-                if (!string.IsNullOrEmpty(PermissionNeeded) && !AddedPermissions.Contains(PermissionNeeded))
+                bool IsMultiplePermissions = PermissionNeeded.Contains(',');
+                if (!string.IsNullOrEmpty(PermissionNeeded))
                 {
-                    AddedPermissions.Add(PermissionNeeded);
-                    Buffer += $"\"{PermissionNeeded}\",";
+                    if (IsMultiplePermissions)
+                    {
+                        foreach (string Permission in PermissionNeeded.Split(","))
+                        {
+                            if (!AddedPermissions.Contains(Permission))
+                            {
+                                AddedPermissions.Add(Permission);
+                                Buffer += $"\"{Permission}\",";
+                            }
+                        }
+
+                    } else
+                    {
+                        if (!AddedPermissions.Contains(PermissionNeeded))
+                        {
+                            AddedPermissions.Add(PermissionNeeded);
+                            Buffer += $"\"{PermissionNeeded}\",";
+                        }
+                    }
                 }
             }
             Buffer = Buffer.TrimEnd(',');
@@ -115,64 +138,83 @@ namespace Userscript2Extension
 
         internal bool BuildContentScript(out string ContentScriptContent)
         {
-            IEnumerable<string> Requires = _UserscriptHeader.Headers["require"];
-            IEnumerable<string> Grants = _UserscriptHeader.Headers["grant"];
-
             // TODO: Stupid hack to make GM_get/set/deleteValue work without
             // having to use the clusterfuck chrome storage api
             string Buffer = $"const keyPrefix = \"{_UserscriptHeader.Headers["name"].First().Replace(" ", "_")}.\";\n";
 
-            foreach (string Grant in Grants)
+            if (_UserscriptHeader.Headers.TryGetValue("grant", out IEnumerable<string> Grants))
             {
-                Buffer += RewriteGrant(Grant);
-            }
-
-            foreach (string Require in Requires) {
-                bool IsLocalFile = Require.StartsWith("file:///");
-                bool IsRelativePath = IsLocalFile && !Path.IsPathRooted(Require.Split("file:///")[1]);
-                string ScriptContent = "";
-                if (IsLocalFile)
+                foreach (string Grant in Grants)
                 {
-                    if (IsRelativePath) ScriptContent = File.ReadAllText(Path.Combine(_UserscriptBaseFolder, Require.Split("file:///")[1]));
-                    else ScriptContent = File.ReadAllText(Require.Split("file:///")[1]);
-                } else
-                {
-                    ScriptContent = new System.Net.WebClient().DownloadString(Require);
+                    Buffer += RewriteGrant(Grant);
                 }
-                Buffer += $"{ScriptContent}\n";
+            }
+            
+            if (_UserscriptHeader.Headers.TryGetValue("require", out IEnumerable<string> Requires))
+            {
+                foreach (string Require in Requires)
+                {
+                    bool IsLocalFile = Require.StartsWith("file:///");
+                    bool IsRelativePath = IsLocalFile && !Path.IsPathRooted(Require.Split("file:///")[1]);
+                    string ScriptContent = "";
+                    if (IsLocalFile)
+                    {
+                        if (IsRelativePath) ScriptContent = File.ReadAllText(Path.Combine(_UserscriptBaseFolder, Require.Split("file:///")[1]));
+                        else ScriptContent = File.ReadAllText(Require.Split("file:///")[1]);
+                    }
+                    else
+                    {
+                        try
+                        {
+                            ScriptContent = new HttpClient().GetStringAsync(Require).GetAwaiter().GetResult();
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[X] Failed fetching require content from url '{Require}', manual intervention needed!");
+                            Console.ReadKey();
+                            throw new InvalidOperationException($"[X] Failed fetching require content from url '{Require}', manual intervention needed!");
+                        }
+                    }
+                    Buffer += $"{ScriptContent}\n";
+                }
             }
 
             const string HeaderEnd = "// ==/UserScript==";
-            int SliceStart = Array.FindIndex(_UserscriptContentLines, line => line.Equals(HeaderEnd, StringComparison.InvariantCultureIgnoreCase));
+            int SliceStart = Array.FindIndex(_UserscriptContentLines, line => line.Contains(HeaderEnd, StringComparison.InvariantCultureIgnoreCase));
             Buffer += string.Join("\n", _UserscriptContentLines[(SliceStart + 1)..]);
 
             if (_UserscriptHeader.Headers.TryGetValue("run-at", out var Values))
             {
                 var Value = Values.First();
-                Console.WriteLine($"Ignored @run-at directive ({Value})");
-                if (!Value.Equals("document-start") 
-                    && !Value.Equals("context-menu"))
-                {
-                    switch (Value)
-                    {
-                        case "document-idle":
-                        case "document-end":
-                            // Run when 'DOMContentLoaded' event gets called
-                            break;
-                        case "document-body":
-                            // Run when document.body is not null
-                            break;
-                    }
-                }
+                Buffer = HandleRunat(Buffer, Value);
             }
 
             ContentScriptContent = Buffer;
             return true;
         }
 
+
+
         internal bool BuildBackgroundScript(out string BackgroundScriptContent)
         {
-            BackgroundScriptContent = "";
+            string Buffer = "";
+
+            if (_IsChromeExtension)
+            {
+                Buffer =
+                    @"chrome.runtime.onMessage.addListener(function(message, callback) {
+                        // Do something with message and callback here
+                    });";
+            }
+            else
+            {
+                Buffer =
+                    @"browser.runtime.onMessage.addListener((data, sender) => {
+                        // Do something with data and sender here
+                    });";
+            }
+
+            BackgroundScriptContent = Buffer;
             return true;
         }
 
@@ -245,7 +287,14 @@ namespace Userscript2Extension
             { "GM_xmlhttpRequest",
                 "function GM_xmlhttpRequest(details) {\n" +
                 "   debugger;\n" +
-                "}\n" }
+                "}\n" },
+            //{ "GM_getTab",
+            //    "function GM_getTab(callback) {\n" +
+            //    "   let queryOptions = { active: true, lastFocusedWindow: true };\n" +
+            //    "   chrome.tabs.query(queryOptions, ([tab]) => { \n" +
+            //    "       callback(tab);\n" +
+            //    "   });" +
+            //    "}\n"}
         };
         internal string RewriteGrant(string GrantName)
         {
@@ -257,6 +306,29 @@ namespace Userscript2Extension
             }
         }
 
+        internal string HandleRunat(string Buffer, string RunatDirective)
+        {
+            Console.WriteLine($"[-] Ignored @run-at directive ({RunatDirective})");
+            if (!RunatDirective.Equals("document-start")
+                && !RunatDirective.Equals("context-menu"))
+            {
+                switch (RunatDirective)
+                {
+                    case "document-idle":
+                    case "document-end":
+                        // Run when 'DOMContentLoaded' event gets called
+                        // Wrap data in buffer acordingly
+                        break;
+                    case "document-body":
+                        // Run when document.body is not null
+                        // Wrap data in buffer acordingly
+                        break;
+                }
+            }
+
+            return Buffer;
+        }
+
         public void Convert() {
             _UserscriptHeader = ParseHeader();
 
@@ -265,8 +337,22 @@ namespace Userscript2Extension
             Success = BuildBackgroundScript(out string BackgroundText);
 
             Success = Finalize(ContentText, ManifestText, BackgroundText, out string Path);
-            Console.WriteLine("Extension data placed at: " + Path);
-            Debugger.Break();
+
+            PackExtension(Path, out Path);
+            Console.WriteLine("[+] Extension data placed at: " + Path);
+        }
+
+        internal void PackExtension(string ExtensionPath, out string PackedExtensionPath)
+        {
+            if (_IsChromeExtension)
+            {
+                Console.WriteLine("[-] PackExtension (chrome) was called but no logic implemented, ignoring ...");
+            }
+            else
+            {
+                Console.WriteLine("[-] PackExtension (firefox) was called but no logic implemented, ignoring ...");
+            }
+            PackedExtensionPath = ExtensionPath;
         }
     }
 
