@@ -50,6 +50,7 @@ namespace Userscript2Extension
         }
 
         internal bool BuildManifest(out string ManifestContent) {
+            Helpers.Log("Building manifest.json");
             string Buffer = "{\n\t\"manifest_version\": 3,\n";
 
             string[] SkippableKeys = ["grant", "match", "require"];
@@ -67,12 +68,12 @@ namespace Userscript2Extension
                         Buffer += $"\t\"{Key}\": \"{Value.First()}\",\n";
                         break;
                     default:
-                        Console.WriteLine($"[~] Skipping header key '{Key}'");
+                        Helpers.Log($"Skipping header key '{Key}'", LogType.Debug, true);
                         break;
                 }
             }
 
-            string[] GrantsNeedingPermission = ["GM_setClipboard", "GM_setValue", "GM_getValue", "GM_deleteValue"/*, "GM_getTab"*/];
+            string[] GrantsNeedingPermission = [/* "GM_setClipboard", "GM_setValue", "GM_getValue", "GM_deleteValue", "GM_getTab" */];
             IEnumerable<string> SpecialGrants = _UserscriptHeader.Headers["grant"].Where(grant => GrantsNeedingPermission.Contains(grant));
             List<string> AddedPermissions = [];
             Buffer += $"\t\"permissions\": [";
@@ -86,11 +87,11 @@ namespace Userscript2Extension
                     case "GM_setClipboard":
                         PermissionNeeded = "clipboardWrite";
                         break;
-                    case "GM_setValue":
-                    case "GM_getValue":
-                    case "GM_deleteValue":
-                        PermissionNeeded = "storage";
-                        break;
+                    //case "GM_setValue":
+                    //case "GM_getValue":
+                    //case "GM_deleteValue":
+                    //    PermissionNeeded = "storage";
+                    //    break;
                     //case "GM_getTab":
                     //    PermissionNeeded = "activeTab,tabs";
                     //    break;
@@ -141,6 +142,7 @@ namespace Userscript2Extension
 
         internal bool BuildContentScript(out string ContentScriptContent)
         {
+            Helpers.Log("Building content-script.js");
             // TODO: Stupid hack to make GM_get/set/deleteValue work without
             // having to use the clusterfuck chrome storage api
             string Buffer = $"const keyPrefix = \"{_UserscriptHeader.Headers["name"].First().Replace(" ", "_")}.\";\n";
@@ -173,11 +175,13 @@ namespace Userscript2Extension
                         }
                         catch (Exception ex)
                         {
-                            Console.WriteLine($"[X] Failed fetching require content from url '{Require}', manual intervention needed!");
+                            Helpers.Log($"[X] Failed fetching require content from url '{Require}', manual intervention needed!", LogType.Error, true);
                             Console.ReadKey();
                             throw; // Rethrow exception to halt the conversion progress
                         }
                     }
+
+                    Helpers.Log($"Resolved require '{Require}'", LogType.Success, true);
                     Buffer += $"{ScriptContent}\n";
                 }
             }
@@ -199,6 +203,7 @@ namespace Userscript2Extension
 
         internal bool BuildBackgroundScript(out string BackgroundScriptContent)
         {
+            Helpers.Log("Building service_worker.js");
             string Buffer = "";
 
             if (_IsChromeExtension)
@@ -222,12 +227,14 @@ namespace Userscript2Extension
 
         internal bool Finalize(string ContentScriptText, string ManifestText, string ServiceWorkerText, out string ExtensionPath)
         {
+            Helpers.Log($"Writing extension files to disk ...");
+
             string OutputPath = Directory.CreateDirectory(Path.Combine(_UserscriptBaseFolder, _UserscriptHeader.Headers["name"].First())).FullName;
             File.WriteAllText(Path.Combine(OutputPath, "manifest.json"), ManifestText);
             File.WriteAllText(Path.Combine(OutputPath, "content-script.js"), ContentScriptText);
             File.WriteAllText(Path.Combine(OutputPath, "service_worker.js"), ServiceWorkerText);
 
-            // TODO: Automatically pack extension via chrome.exe
+            // Do packing in here instead of inside Convert
 
             ExtensionPath = OutputPath;
             return true;
@@ -305,16 +312,20 @@ namespace Userscript2Extension
         };
         internal string RewriteGrant(string GrantName)
         {
-            if (RewriteLookupTable.TryGetValue(GrantName, out string Rewrite)) return Rewrite;
+            if (RewriteLookupTable.TryGetValue(GrantName, out string Rewrite))
+            {
+                Helpers.Log($"Grant '{GrantName}' handled", LogType.Debug, true);
+                return Rewrite;
+            }
             else
             {
-                Console.WriteLine($"[X] Missing implementation for {GrantName}");
-                return $"function {GrantName}(args) {{ console.warn(`Implementation for '{GrantName}' has not been written`); }}\n";
+                Helpers.Log($"Missing implementation for {GrantName}, returning placeholder ...", LogType.Warning, true);
+                return $"function {GrantName}(...args) {{ console.warn(`Implementation for '{GrantName}' has not been written`); debugger; }}\n";
             }
         }
         internal string HandleRunat(string Buffer, string RunatDirective)
         {
-            Console.WriteLine($"[-] Ignored @run-at directive ({RunatDirective})");
+            Helpers.Log($"Ignored @run-at directive ({RunatDirective})", LogType.Warning, true);
             if (!RunatDirective.Equals("document-start")
                 && !RunatDirective.Equals("context-menu"))
             {
@@ -336,36 +347,45 @@ namespace Userscript2Extension
         }
 
         public void Convert() {
-            Console.WriteLine($"[*] Attempting to generate a {(_IsChromeExtension ? "chrome" : "firefox")} extension, please wait ...");
+            Helpers.Log($"Attempting to generate a {(_IsChromeExtension ? "chrome" : "firefox")} extension, please wait ...");
             _UserscriptHeader = ParseHeader();
 
             bool Success = BuildManifest(out string ManifestText);
             Success = BuildContentScript(out string ContentText);
             Success = BuildBackgroundScript(out string BackgroundText);
+            Success = Finalize(ContentText, ManifestText, BackgroundText, out string OutputExtensionPath);
 
-            Success = Finalize(ContentText, ManifestText, BackgroundText, out string Path);
-
-            PackExtension(Path, out Path);
-            Console.WriteLine("[+] Extension data placed at: " + Path);
+            PackExtension(OutputExtensionPath, out OutputExtensionPath);
+            Helpers.Log("Extension data placed at: " + OutputExtensionPath, LogType.Success);
         }
 
         internal void PackExtension(string ExtensionPath, out string PackedExtensionPath)
         {
-            Console.WriteLine($"[-] PackExtension ({(_IsChromeExtension ? "chrome" : "firefox")}) was called but no logic implemented, ignoring ...");
+            const bool ForceDisablePacking = true;
+            if (ForceDisablePacking)
+            {
+                Helpers.Log($"PackExtension ({(_IsChromeExtension ? "chrome" : "firefox")}) was called but no logic implemented or function was instructed to not pack (ForceDisablePacking was true), ignoring ...", LogType.Warning);
+                PackedExtensionPath = ExtensionPath;
+                return;
+            }
+
             if (_IsChromeExtension)
             {
-                bool Found = Helpers.TryResolveChromePath(out string ChromePath);
+                bool Found = Helpers.TryResolveChromePath(out string ChromeExecutablePath);
                 if (Found)
                 {
-                    string CommandLine = $@"--pack-extension=""{ExtensionPath}"" --pack-extension-key=""{Path.Combine(Path.GetDirectoryName(ExtensionPath), _UserscriptHeader.Headers["name"].First())}.pem""";
-                    // Call executable pointed to by path in ChromePath with CommandLine as the argument
-                    //PackedExtensionPath = Path.Combine(Path.GetDirectoryName(ExtensionPath), Path.Combine(Path.GetDirectoryName(ExtensionPath), _UserscriptHeader.Headers["name"].First()) + ".crx";
+                    string ExtensionPrivateKeyPath = Path.Combine(Path.GetDirectoryName(ExtensionPath), _UserscriptHeader.Headers["name"].First());
+                    string CommandLine = $@"--pack-extension=""{ExtensionPath}"" --pack-extension-key=""{ExtensionPrivateKeyPath}.pem""";
+                    string PackedExtensionOutputPath = Path.Combine(Path.GetDirectoryName(ExtensionPath), Path.Combine(Path.GetDirectoryName(ExtensionPath), _UserscriptHeader.Headers["name"].First()) + ".crx");
+                    // Call executable pointed to by path in ChromeExecutablePath with CommandLine as the argument
+                    //PackedExtensionPath = PackedExtensionOutputPath;
                 }
             }
             else
             {
-                ZipFile.CreateFromDirectory(ExtensionPath, Path.Combine(Path.GetDirectoryName(ExtensionPath), _UserscriptHeader.Headers["name"].First()) + ".zip");
-                //PackedExtensionPath = Path.Combine(Path.GetDirectoryName(ExtensionPath), _UserscriptHeader.Headers["name"].First()) + ".zip";
+                string PackedExtensionOutputPath = Path.Combine(Path.GetDirectoryName(ExtensionPath), _UserscriptHeader.Headers["name"].First()) + ".zip";
+                ZipFile.CreateFromDirectory(ExtensionPath, PackedExtensionOutputPath);
+                //PackedExtensionPath = PackedExtensionOutputPath;
             }
 
             PackedExtensionPath = ExtensionPath;
@@ -386,9 +406,54 @@ namespace Userscript2Extension
                 return true;
             }
 
-            ChromeExecutablePath = "";
+            // TODO: Implement fallbacks to locating chrome.exe path automatically
+            // Check environment variables? and/or call 'where chrome' in the terminal
+            // Can also check paths if they exists 'C:\Program Files (x86)\Google\Chrome\Application' and 'C:\Program Files\Google\Chrome\Application'
+            // Also check registry key path 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe'
+
+            ChromeExecutablePath = "";  
             return false;
         }
+
+        internal static void Log(string Message, LogType MessageType = LogType.Normal, bool Indented = false)
+        {
+            string Prefix = "[*]";
+            switch (MessageType)
+            {
+                case LogType.Normal:
+                    Console.ResetColor();
+                    break;
+                case LogType.Success:
+                    Console.ForegroundColor = ConsoleColor.Green;
+                    Prefix = "[✓]";
+                    break;
+                case LogType.Warning:
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Prefix = "[-]";
+                    break;
+                case LogType.Error:
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Prefix = "[X]";
+                    break;
+                case LogType.Debug:
+                    Console.ForegroundColor = ConsoleColor.Magenta;
+                    Prefix = "[~]";
+                    break;
+            }
+
+            Console.WriteLine($"{(Indented ? "\t" : string.Empty)}{Prefix} {Message}");
+
+            if (MessageType != LogType.Normal) Console.ResetColor();
+        }
+    }
+
+    internal enum LogType
+    {
+        Normal,
+        Success,
+        Warning,
+        Error,
+        Debug,
     }
 
     internal class Header
