@@ -194,6 +194,7 @@ namespace Userscript2Extension
                 Helpers.Log($"Handled header directive @noframes", LogType.Success, true);
             }
 
+            /*
             bool HasSandbox = _UserscriptHeader.Headers.ContainsKey("sandbox");
             if (HasSandbox)
             {
@@ -202,6 +203,7 @@ namespace Userscript2Extension
                 Buffer += $"\t\t\"world\": \"{ManifestEquivalent}\",\n";
                 Helpers.Log($"Handled header directive @sandbox", LogType.Success, true);
             }
+            */
 
             Buffer += $"\t\t\"js\": [\"{ContentScriptFileName}\"]\n\t}}],\n";
             Buffer += $"\t\"background\": {{ \"service_worker\": \"{ServiceWorkerFileName}\" }}";

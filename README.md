@@ -5,6 +5,9 @@
  * @require - Supports both local files (file:///) and remote urls
  * @grant - See section below to see what functions are supported
  * @match - Should work fully
+ * @run-at
+ * @noframes
+ * @connect (not tested fully, came with re-implementation of GM_xmlhttpRequest)
 
 # Supported GM_* functions
  * GM_log
@@ -15,7 +18,8 @@
  * GM_getValue
  * GM_deleteValue
  * GM_listValues
- * unsafeWindow (barely, just returns the first available 'window' instance to the script)
+ * GM_xmlhttpRequest (just uses fetch under the hood, and requires @connect directives to be specified also)
+ * unsafeWindow (barely, just returns the first available 'window' instance to the script, unless @sandbox is set to MAIN_WORLD)
 
 # Stuff that arent working/supported
  * Basically everything else thats not mentioned above (which is still a lot, and even for the functions mentioned above, none of the async versions are implemented)
