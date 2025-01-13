@@ -1,6 +1,6 @@
 ﻿using System.Diagnostics;
+using System.Drawing;
 using System.IO.Compression;
-using System.Security;
 
 namespace Userscript2Extension
 {
@@ -56,7 +56,7 @@ namespace Userscript2Extension
             Helpers.Log($"Generating {ManifestFileName}");
             string Buffer = "{\n\t\"manifest_version\": 3,\n";
 
-            string[] SkippableKeys = ["grant", "match", "require", "run-at", "connect", "icon"];
+            string[] SkippableKeys = ["grant", "match", "require", "run-at", "connect", "icon", "noframes", "sandbox"];
 
             foreach (KeyValuePair<string, IEnumerable<string>> kvp in _UserscriptHeader.Headers.Where(kvp => !SkippableKeys.Contains(kvp.Key)))
             {
@@ -77,24 +77,80 @@ namespace Userscript2Extension
                 }
             }
 
+            bool ForcePlaceholderIcon = true;
             if (_UserscriptHeader.Headers.TryGetValue("icon", out IEnumerable<string> Icons))
             {
                 string Icon = Icons.First();
                 
-                bool IsRemoteUrl = Uri.TryCreate(Icon, UriKind.Absolute, out var Result);
-                IsRemoteUrl &= Result.Scheme == Uri.UriSchemeHttp || Result.Scheme == Uri.UriSchemeHttps; ;
+                bool IsRemoteUrl = Uri.TryCreate(Icon, UriKind.Absolute, out Uri? Result);
+                IsRemoteUrl &= Result?.Scheme == Uri.UriSchemeHttp || Result?.Scheme == Uri.UriSchemeHttps;
 
-                if (IsRemoteUrl)
+                if (IsRemoteUrl && !ForcePlaceholderIcon)
                 {
-                    // Download file to disk
-                    // Save it in extension output folder inside folder called images
-                    // Update buffer accordingly to use saved image as icon
-                } else
+                    byte[] ImageBytes = new HttpClient().GetByteArrayAsync(Icon).GetAwaiter().GetResult();
+                    string ImageOutputFolder = Directory.CreateDirectory(Path.Combine(_UserscriptBaseFolder, _UserscriptHeader.Headers["name"].First(), "img")).FullName;
+                    string Filename = "fetched.png";
+                    File.WriteAllBytes(Path.Combine(ImageOutputFolder, Filename), ImageBytes);
+
+                    bool HasFfmpeg = Helpers.TryResolveFfmpegPath(out _);
+                    if (HasFfmpeg)
+                    {
+                        string[] NeededFfmpegScales = ["16:16", "32:32", "48:48", "128:128"];
+                        foreach (var scale in NeededFfmpegScales)
+                        {
+                            string OutputFilename = $"icon{scale.Split(':')[0]}.png";
+                            Helpers.ExecuteCommand($"ffmpeg -y -i \"{Path.Combine(ImageOutputFolder, Filename)}\" -pix_fmt rgba -vf scale={scale} \"{Path.Combine(ImageOutputFolder, OutputFilename)}\"");
+                        }
+                        File.Delete(Path.Combine(ImageOutputFolder, Filename));
+                        Buffer += 
+                            "\t\"icons\": {\n" +
+                                "\t\t\"16\": \"img/icon16.png\",\n" +
+                                "\t\t\"32\": \"img/icon32.png\",\n" +
+                                "\t\t\"48\": \"img/icon48.png\",\n" +
+                                "\t\t\"128\": \"img/icon128.png\"\n" +
+                            "\t},\n";
+                        Helpers.Log($"Handled header directive @icon (resized image to support all resolutions)", LogType.Warning, true);
+                    } else
+                    {
+                        Size ImageSize = Helpers.GetPngSize(Path.Combine(ImageOutputFolder, Filename));
+                        bool FetchedImageCorrectSize = ImageSize.Width == 48 && ImageSize.Height == 48;
+                        if (FetchedImageCorrectSize)
+                        {
+                            File.Move(Path.Combine(ImageOutputFolder, Filename), Path.Combine(ImageOutputFolder, "icon48.png"));
+                            Buffer += $"\t\"icons\": {{ \"48\": \"img/icon48.png\" }},\n";
+                            Helpers.Log($"Handled header directive @icon (resized image)", LogType.Warning, true);
+                        }
+                        else
+                        {
+                            ImageBytes = new HttpClient().GetByteArrayAsync("https://www.google.com/s2/favicons?sz=48&domain=tampermonkey.net").GetAwaiter().GetResult();
+                            File.WriteAllBytes(Path.Combine(ImageOutputFolder, "icon48.png"), ImageBytes);
+                            File.Delete(Path.Combine(ImageOutputFolder, Filename));
+                            Buffer += $"\t\"icons\": {{ \"48\": \"img/{Filename}\" }},\n";
+                            Helpers.Log($"Handled header directive @icon (using placeholder)", LogType.Warning, true);
+                        }
+                        
+                    }
+                } 
+                else
                 {
-                    // Handle url not being remote, could be base64
+                    byte[] ImageBytes = new HttpClient().GetByteArrayAsync("https://www.google.com/s2/favicons?sz=48&domain=tampermonkey.net").GetAwaiter().GetResult();
+                    string ImageOutputFolder = Directory.CreateDirectory(Path.Combine(_UserscriptBaseFolder, _UserscriptHeader.Headers["name"].First(), "img")).FullName;
+                    string Filename = "fetched.png";
+                    File.WriteAllBytes(Path.Combine(ImageOutputFolder, "icon48.png"), ImageBytes);
+                    File.Delete(Path.Combine(ImageOutputFolder, Filename));
+                    Buffer += $"\t\"icons\": {{ \"48\": \"img/{Filename}\" }},\n";
+                    Helpers.Log($"Handled header directive @icon (using placeholder)", LogType.Warning, true);
                 }
-
-                Helpers.Log($"Skipping header directive @icon", LogType.Debug, true);
+            }
+            else
+            {
+                byte[] ImageBytes = new HttpClient().GetByteArrayAsync("https://www.google.com/s2/favicons?sz=48&domain=tampermonkey.net").GetAwaiter().GetResult();
+                string ImageOutputFolder = Directory.CreateDirectory(Path.Combine(_UserscriptBaseFolder, _UserscriptHeader.Headers["name"].First(), "img")).FullName;
+                string Filename = "fetched.png";
+                File.WriteAllBytes(Path.Combine(ImageOutputFolder, "icon48.png"), ImageBytes);
+                File.Delete(Path.Combine(ImageOutputFolder, Filename));
+                Buffer += $"\t\"icons\": {{ \"48\": \"img/{Filename}\" }},\n";
+                Helpers.Log($"Handled header directive @icon (using placeholder)", LogType.Warning, true);
             }
 
             Dictionary<string, string> GrantPermissionLookup = new()
@@ -201,7 +257,6 @@ namespace Userscript2Extension
                 Buffer += $"\t\t\"all_frames\": false,\n";
             }
 
-            
             bool HasSandbox = _UserscriptHeader.Headers.ContainsKey("sandbox");
             if (HasSandbox)
             {
@@ -273,16 +328,9 @@ namespace Userscript2Extension
                 }
             }
 
-            //const string HeaderEnd = "// ==/UserScript==";
             const string HeaderEnd = "==/UserScript==";
             int SliceStart = Array.FindIndex(_UserscriptContentLines, line => line.Contains(HeaderEnd, StringComparison.InvariantCultureIgnoreCase));
             Buffer += string.Join("\n", _UserscriptContentLines[(SliceStart + 1)..]);
-
-            //if (_UserscriptHeader.Headers.TryGetValue("run-at", out var Values))
-            //{
-            //    var Value = Values.First();
-            //    Buffer = HandleRunat(Buffer, Value);
-            //}
 
             ContentScriptContent = Buffer;
             return true;
@@ -445,18 +493,6 @@ namespace Userscript2Extension
             bool Success = BuildManifest(out string ManifestText);
             Success = BuildContentScript(out string ContentText);
             Success = BuildBackgroundScript(out string BackgroundText);
-
-            if (RunMinifyPass)
-            {
-                Helpers.Log($"Running Minifier on {ContentScriptFileName}");
-                Success = Minify(ContentText, out ContentText);
-                if (Success) Helpers.Log($"Success!", LogType.Success, true);
-
-                Helpers.Log($"Running Minifier on {ServiceWorkerFileName}");
-                Success = Minify(BackgroundText, out BackgroundText);
-                if (Success) Helpers.Log($"Success!", LogType.Success, true);
-            }
-
             Success = Finalize(ContentText, ManifestText, BackgroundText, out string OutputExtensionPath);
 
             if (RunPackingPass)
@@ -498,18 +534,6 @@ namespace Userscript2Extension
 
             PackedExtensionPath = ExtensionPath;
         }
-        internal bool Minify(string Buffer, out string MinifiedBuffer)
-        {
-            try
-            {
-                MinifiedBuffer = NUglify.Uglify.Js(Buffer).Code;
-                return true;
-            } catch (Exception err)
-            {
-                MinifiedBuffer = Buffer;
-                return false;
-            }
-        }
     }
 
     internal static class Helpers
@@ -532,6 +556,20 @@ namespace Userscript2Extension
             // Also check registry key path 'HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe'
 
             ChromeExecutablePath = "";  
+            return false;
+        }
+
+        internal static bool TryResolveFfmpegPath(out string FfmpegExecutablePath)
+        {
+            string FfmpegPath = "";
+            bool HasFfmpeg = Path.IsPathRooted((FfmpegPath = ExecuteCommand("where ffmpeg")));
+            if (HasFfmpeg)
+            {
+                FfmpegExecutablePath = FfmpegPath;
+                return true;
+            }
+
+            FfmpegExecutablePath = "";
             return false;
         }
 
@@ -566,38 +604,32 @@ namespace Userscript2Extension
             if (MessageType != LogType.Normal) Console.ResetColor();
         }
 
-        //internal static void Log(string Message, LogType MessageType = LogType.Normal, int IndendationLevelCount = 0)
-        //{
-        //    string Prefix = "[*]";
-        //    switch (MessageType)
-        //    {
-        //        case LogType.Normal:
-        //            Console.ResetColor();
-        //            break;
-        //        case LogType.Success:
-        //            Console.ForegroundColor = ConsoleColor.Green;
-        //            Prefix = "[✓]";
-        //            break;
-        //        case LogType.Warning:
-        //            Console.ForegroundColor = ConsoleColor.Yellow;
-        //            Prefix = "[-]";
-        //            break;
-        //        case LogType.Error:
-        //            Console.ForegroundColor = ConsoleColor.Red;
-        //            Prefix = "[X]";
-        //            break;
-        //        case LogType.Debug:
-        //            Console.ForegroundColor = ConsoleColor.Magenta;
-        //            Prefix = "[~]";
-        //            break;
-        //    }
+        internal static Size GetPngSize(string Path)
+        {
+            var buff = new byte[32];
+            using (var d = File.OpenRead(Path))
+            {
+                d.Read(buff, 0, 32);
+            }
+            const int wOff = 16;
+            const int hOff = 20;
+            var Width = BitConverter.ToInt32([buff[wOff + 3], buff[wOff + 2], buff[wOff + 1], buff[wOff + 0],], 0);
+            var Height = BitConverter.ToInt32([buff[hOff + 3], buff[hOff + 2], buff[hOff + 1], buff[hOff + 0],], 0);
+            return new Size(Width, Height);
+        }
 
-        //    string Indendation = new('\t', IndendationLevelCount);
-        //    bool Indented = !string.IsNullOrEmpty(Indendation);
-        //    Console.WriteLine($"{(Indented ? Indendation : string.Empty)}{Prefix} {Message}");
-
-        //    if (MessageType != LogType.Normal) Console.ResetColor();
-        //}
+        internal static string ExecuteCommand(string Command)
+        {
+            Process p = new();
+            p.StartInfo.UseShellExecute = false;
+            p.StartInfo.RedirectStandardOutput = true;
+            p.StartInfo.FileName = "cmd.exe";
+            p.StartInfo.Arguments = @$"/C {Command}";
+            p.Start();
+            string output = p.StandardOutput.ReadToEnd();
+            p.WaitForExit();
+            return output.Trim();
+        }
     }
 
     internal enum LogType
