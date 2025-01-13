@@ -105,7 +105,7 @@ namespace Userscript2Extension
             };
 
             if (_UserscriptHeader.Headers.TryGetValue("grant", out IEnumerable<string> GrantsNeedingPermissions) 
-                && (GrantsNeedingPermissions = GrantsNeedingPermissions.Where(grant => GrantPermissionLookup.ContainsKey(grant))).Any())
+                && (GrantsNeedingPermissions = GrantsNeedingPermissions.Where(grant => GrantPermissionLookup.ContainsKey(grant) && RewriteLookupTable.ContainsKey(grant))).Any())
             {
                 List<string> AddedPermissions = [];
                 Buffer += $"\t\"permissions\": [";
@@ -178,14 +178,14 @@ namespace Userscript2Extension
                 Buffer += "],\n";
             }
 
-            
             bool HasRunAt = _UserscriptHeader.Headers.ContainsKey("run-at");
             if (HasRunAt)
             {
                 string Value = _UserscriptHeader.Headers["run-at"].First();
                 Buffer += $"\t\t\"run_at\": \"{Value.Replace("-", "_")}\",\n";
-                Helpers.Log($"Handled header directive @runat", LogType.Success, true);
-            } else
+                Helpers.Log($"Handled header directive @run-at", LogType.Success, true);
+            } 
+            else
             {
                 Buffer += $"\t\t\"run_at\": \"document_start\",\n";
             }
@@ -195,7 +195,8 @@ namespace Userscript2Extension
             {
                 Buffer += $"\t\t\"all_frames\": false,\n";
                 Helpers.Log($"Handled header directive @noframes", LogType.Success, true);
-            } else
+            } 
+            else
             {
                 Buffer += $"\t\t\"all_frames\": false,\n";
             }
@@ -212,7 +213,8 @@ namespace Userscript2Extension
                 };
                 Buffer += $"\t\t\"world\": \"{ManifestEquivalent}\",\n";
                 Helpers.Log($"Handled header directive @sandbox", LogType.Success, true);
-            } else
+            } 
+            else
             {
                 Buffer += $"\t\t\"world\": \"MAIN\",\n";
             }
@@ -383,12 +385,6 @@ namespace Userscript2Extension
                 "Object.defineProperty(window, 'GM_info', { value: {}, writable: true });\n" },
             { "unsafeWindow",
                 "Object.defineProperty(window, 'unsafeWindow', { value: window, writable: true });\n" },
-
-            //{ "GM_setClipboard",
-            //    "function GM_setClipboard(data, info, cb) {\n" +
-            //    "   debugger;\n" +
-            //    "}\n" },
-
             { "GM_xmlhttpRequest",
                 "function GM_xmlhttpRequest(details) {\n" +
                 "   return new Promise((resolve, reject) => {\n" +
@@ -403,6 +399,11 @@ namespace Userscript2Extension
                 "   });\n" +
                 "}\n" },
 
+            //{ "GM_setClipboard",
+            //    "function GM_setClipboard(data, info, cb) {\n" +
+            //    "   debugger;\n" +
+            //    "}\n" },
+
             //{ "GM_getTab",
             //    "function GM_getTab(callback) {\n" +
             //    "   let queryOptions = { active: true, lastFocusedWindow: true };\n" +
@@ -410,6 +411,11 @@ namespace Userscript2Extension
             //    "       callback(tab);\n" +
             //    "   });" +
             //    "}\n"}
+
+            //{ "GM_notification",
+            //    "function GM_notification(...args) {\n" +
+            //    "   \n" +
+            //    "}\n" }
         };
         internal string HandleGrant(string GrantName, bool ThrowOnUnhandledGrant = true)
         {
@@ -431,29 +437,7 @@ namespace Userscript2Extension
                 }
             }
         }
-        internal string HandleRunat(string Buffer, string RunatDirective)
-        {
-            Helpers.Log($"Missing implementation for @run-at directive ({RunatDirective})", LogType.Warning, true);
-            if (!RunatDirective.Equals("document-start")
-                && !RunatDirective.Equals("context-menu"))
-            {
-                switch (RunatDirective)
-                {
-                    case "document-idle":
-                    case "document-end":
-                        // Run when 'DOMContentLoaded' event gets called
-                        // Wrap Buffer  acordingly
-                        break;
-                    case "document-body":
-                        // Run when document.body is not null
-                        // Wrap Buffer acordingly
-                        break;
-                }
-            }
-
-            return Buffer;
-        }
-
+        
         public void Convert(bool RunMinifyPass = false, bool RunPackingPass = false) {
             Helpers.Log($"Attempting to generate a {(_IsChromeExtension ? "chrome" : "firefox")} extension, please wait ...");
             _UserscriptHeader = ParseHeader();
