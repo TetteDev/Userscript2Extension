@@ -178,6 +178,31 @@ namespace Userscript2Extension
                 Buffer += "],\n";
             }
 
+            
+            bool HasRunAt = _UserscriptHeader.Headers.ContainsKey("run-at");
+            if (HasRunAt)
+            {
+                string Value = _UserscriptHeader.Headers["run-at"].First();
+                Buffer += $"\t\t\"run_at\": \"{Value}\",\n";
+                Helpers.Log($"Handled header directive @runat", LogType.Success, true);
+            }
+            bool HasNoIframes = _UserscriptHeader.Headers.ContainsKey("noframes");
+            if (HasNoIframes)
+            {
+                string Value = _UserscriptHeader.Headers["noframes"].First();
+                Buffer += $"\t\t\"all_frames\": false,\n";
+                Helpers.Log($"Handled header directive @noframes", LogType.Success, true);
+            }
+
+            bool HasSandbox = _UserscriptHeader.Headers.ContainsKey("sandbox");
+            if (HasSandbox)
+            {
+                string Value = _UserscriptHeader.Headers["sandbox"].First();
+                string ManifestEquivalent = Value == "ISOLATED_WORLD" ? "ISOLATED" : "MAIN";
+                Buffer += $"\t\t\"world\": \"{ManifestEquivalent}\",\n";
+                Helpers.Log($"Handled header directive @sandbox", LogType.Success, true);
+            }
+
             Buffer += $"\t\t\"js\": [\"{ContentScriptFileName}\"]\n\t}}],\n";
             Buffer += $"\t\"background\": {{ \"service_worker\": \"{ServiceWorkerFileName}\" }}";
 
@@ -237,11 +262,11 @@ namespace Userscript2Extension
             int SliceStart = Array.FindIndex(_UserscriptContentLines, line => line.Contains(HeaderEnd, StringComparison.InvariantCultureIgnoreCase));
             Buffer += string.Join("\n", _UserscriptContentLines[(SliceStart + 1)..]);
 
-            if (_UserscriptHeader.Headers.TryGetValue("run-at", out var Values))
-            {
-                var Value = Values.First();
-                Buffer = HandleRunat(Buffer, Value);
-            }
+            //if (_UserscriptHeader.Headers.TryGetValue("run-at", out var Values))
+            //{
+            //    var Value = Values.First();
+            //    Buffer = HandleRunat(Buffer, Value);
+            //}
 
             ContentScriptContent = Buffer;
             return true;
