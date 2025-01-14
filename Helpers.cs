@@ -1,8 +1,9 @@
 ﻿using System.Diagnostics;
+using System.Text.RegularExpressions;
 
 namespace Userscript2Extension
 {
-    internal static class Helpers
+    internal static partial class Helpers
     {
         internal static bool TryResolveChromePath(out string ChromeExecutablePath)
         {
@@ -84,6 +85,21 @@ namespace Userscript2Extension
             return new Size(Width, Height);
         }
 
+        [GeneratedRegex(@"\b([a-zA-Z_$][a-zA-Z0-9_$]*)\s*\(", RegexOptions.Compiled)]
+        internal static partial Regex FunctionCallRegex();
+        internal static IEnumerable<string> GetFunctionCalls(string jsCode)
+        {
+            var functionNames = new List<string>();
+            var regex = FunctionCallRegex();
+
+            foreach (Match match in regex.Matches(jsCode))
+            {
+                functionNames.Add(match.Groups[1].Value);
+            }
+
+            return functionNames.Distinct();
+        }
+
         internal static string ExecuteCommand(string Command)
         {
             Process p = new();
@@ -95,7 +111,6 @@ namespace Userscript2Extension
             string output = p.StandardOutput.ReadToEnd();
             p.WaitForExit();
             return output.Trim();
-        }
-
+        } 
     }
 }

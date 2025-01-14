@@ -1,4 +1,6 @@
-﻿using System.IO.Compression;
+﻿using System.Diagnostics;
+using System.IO.Compression;
+using static Userscript2Extension.Helpers;
 
 namespace Userscript2Extension
 {
