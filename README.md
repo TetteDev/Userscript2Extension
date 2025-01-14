@@ -28,7 +28,7 @@
  * Basically everything else thats not mentioned above (which is still a lot, and even for the functions mentioned above, none of the async versions are implemented)
 
 # Stuff that needs to be done (in no particular order)
- * Test implementation of GM_xmlhttpRequest (along with with @connect)
+ * Test implementation of GM_xmlhttpRequest (along with @connect)
  * A somewhat functional version of GM_info could be nice, where you can atleast get some script information, now it just returns an empty object
  * Actually implement a proper version of unsafeWindow
  * ~~Make chrome extension inherit whatever icon is specified in the tampermonkey script header~~ Tidy up implementation for this
